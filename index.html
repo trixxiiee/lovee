@@ -1,0 +1,651 @@
+
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>Jurassic Love Chase</title>
+
+<style>
+* {
+    margin: 0;
+    padding: 0;
+    box-sizing: border-box;
+}
+
+body {
+    font-family: 'Trebuchet MS', sans-serif;
+    background: linear-gradient(#24182f, #704c42);
+    color: white;
+    text-align: center;
+    min-height: 100vh;
+    padding: 15px;
+}
+
+h1 {
+    color: #ffcf65;
+    margin: 15px;
+    text-shadow: 2px 3px #532b1d;
+    font-size: clamp(25px, 5vw, 38px);
+}
+
+.game-container {
+    max-width: 900px;
+    margin: auto;
+    background: #251d2c;
+    padding: 12px;
+    border-radius: 18px;
+    box-shadow: 0 8px 30px #0008;
+}
+
+.score {
+    padding: 12px;
+    font-size: 21px;
+    color: #ffdc79;
+}
+
+canvas {
+    display: block;
+    width: 100%;
+    border-radius: 12px;
+    background: #9acb83;
+    touch-action: none;
+    cursor: pointer;
+}
+
+button {
+    border: none;
+    padding: 13px 25px;
+    border-radius: 25px;
+    background: #ffb347;
+    color: #351c18;
+    font-weight: bold;
+    font-size: 15px;
+    cursor: pointer;
+    margin: 12px 7px;
+}
+
+button:hover {
+    background: #ffe08a;
+    transform: scale(1.05);
+}
+</style>
+</head>
+
+<body>
+
+<h1></h1>
+
+<div class="game-container">
+
+    <div class="score">
+        SCORE: <span id="score">0</span> ❤️
+    </div>
+
+    <canvas id="game" width="850" height="400"></canvas>
+
+    <button id="startButton" onclick="startGame()">
+        START GAME
+    </button>
+
+</div>
+
+<!-- SOUND EFFECTS -->
+<audio id="bgMusic" src="background.mp3" loop preload="auto"></audio>
+<audio id="jumpSound" src="jump.mp3" preload="auto"></audio>
+<audio id="caughtSound" src="caught.mp3" preload="auto"></audio>
+
+<script>
+
+// =================================
+// GAME SETTINGS
+// =================================
+
+const canvas = document.getElementById("game");
+const ctx = canvas.getContext("2d");
+
+const scoreDisplay = document.getElementById("score");
+const startButton = document.getElementById("startButton");
+
+let score = 0;
+let playing = false;
+let gameOver = false;
+let animation = null;
+let frame = 0;
+let speed = 5;
+
+// =================================
+// CHARACTER IMAGES
+// =================================
+
+const girlImage = new Image();
+girlImage.src = "girl.jpg";
+
+const dinoImage = new Image();
+dinoImage.src = "dino.jpg";
+
+// =================================
+// SOUNDS
+// =================================
+
+const bgMusic = document.getElementById("bgMusic");
+const jumpSound = document.getElementById("jumpSound");
+const caughtSound = document.getElementById("caughtSound");
+
+bgMusic.volume = 0.4;
+jumpSound.volume = 0.7;
+caughtSound.volume = 0.8;
+
+// =================================
+// CHARACTERS
+// =================================
+
+const girl = {
+    x: 560,
+    y: 275,
+    width: 65,
+    height: 100,
+    velocity: 0,
+    jumping: false
+};
+
+const dino = {
+    x: 60,
+    y: 260,
+    width: 120,
+    height: 115
+};
+
+let obstacles = [];
+
+// =================================
+// DRAW CHARACTER FACE
+// =================================
+
+function drawFace(img, x, y, size) {
+
+    if (!img.complete || !img.naturalWidth) return;
+
+    ctx.save();
+
+    ctx.beginPath();
+    ctx.arc(
+        x + size / 2,
+        y + size / 2,
+        size / 2,
+        0,
+        Math.PI * 2
+    );
+
+    ctx.clip();
+
+    const scale = Math.max(
+        size / img.width,
+        size / img.height
+    );
+
+    const w = img.width * scale;
+    const h = img.height * scale;
+
+    ctx.drawImage(
+        img,
+        x + (size - w) / 2,
+        y + (size - h) / 2,
+        w,
+        h
+    );
+
+    ctx.restore();
+
+    ctx.beginPath();
+    ctx.arc(
+        x + size / 2,
+        y + size / 2,
+        size / 2,
+        0,
+        Math.PI * 2
+    );
+
+    ctx.lineWidth = 4;
+    ctx.strokeStyle = "#ffd46d";
+    ctx.stroke();
+}
+
+// =================================
+// BACKGROUND
+// =================================
+
+function background() {
+
+    const sky = ctx.createLinearGradient(0, 0, 0, 400);
+
+    sky.addColorStop(0, "#ff9e69");
+    sky.addColorStop(1, "#f6df9d");
+
+    ctx.fillStyle = sky;
+    ctx.fillRect(0, 0, 850, 400);
+
+    // Sun
+    ctx.fillStyle = "#ffe78b";
+    ctx.beginPath();
+    ctx.arc(720, 75, 42, 0, Math.PI * 2);
+    ctx.fill();
+
+    // Volcano
+    ctx.fillStyle = "#76534b";
+    ctx.beginPath();
+    ctx.moveTo(0, 240);
+    ctx.lineTo(130, 80);
+    ctx.lineTo(260, 240);
+    ctx.fill();
+
+    // Lava
+    ctx.fillStyle = "#e65a35";
+    ctx.beginPath();
+    ctx.moveTo(108, 108);
+    ctx.lineTo(130, 80);
+    ctx.lineTo(150, 108);
+    ctx.fill();
+
+    // Mountains
+    ctx.fillStyle = "#9c7654";
+    ctx.beginPath();
+    ctx.moveTo(450, 245);
+    ctx.lineTo(590, 115);
+    ctx.lineTo(750, 245);
+    ctx.fill();
+
+    // Trees
+    for (let i = 0; i < 8; i++) {
+
+        const x =
+            (i * 135 - (frame * 1.2) % 135 + 850) % 850;
+
+        ctx.fillStyle = "#65402a";
+        ctx.fillRect(x, 170, 18, 100);
+
+        ctx.fillStyle = "#347344";
+        ctx.beginPath();
+        ctx.arc(x + 9, 155, 48, 0, Math.PI * 2);
+        ctx.fill();
+    }
+
+    // Ground
+    ctx.fillStyle = "#6b4529";
+    ctx.fillRect(0, 340, 850, 60);
+
+    ctx.fillStyle = "#9b6c3d";
+    ctx.fillRect(0, 340, 850, 8);
+
+    // Ground details
+    for (let i = 0; i < 30; i++) {
+
+        const x =
+            (i * 45 - frame * 5 % 45 + 850) % 850;
+
+        ctx.fillStyle = "#d5a45d";
+        ctx.fillRect(x, 365, 5, 3);
+    }
+}
+
+// =================================
+// DRAW DINOSAUR
+// =================================
+
+function drawDino() {
+
+    ctx.font = "95px serif";
+    ctx.fillText("🦖", dino.x, dino.y + 90);
+
+    if (dinoImage.complete && dinoImage.naturalWidth > 0) {
+        drawFace(
+            dinoImage,
+            dino.x + 39,
+            dino.y + 5,
+            49
+        );
+    }
+}
+
+// =================================
+// DRAW GIRL
+// =================================
+
+function drawGirl() {
+
+    ctx.font = "75px serif";
+    ctx.fillText("👗", girl.x, girl.y + 90);
+
+    if (girlImage.complete && girlImage.naturalWidth > 0) {
+
+        drawFace(
+            girlImage,
+            girl.x + 12,
+            girl.y - 3,
+            48
+        );
+
+    } else {
+
+        ctx.font = "42px serif";
+        ctx.fillText("👧", girl.x + 5, girl.y + 15);
+    }
+}
+
+// =================================
+// DRAW OBSTACLES
+// =================================
+
+function drawObstacles() {
+
+    ctx.font = "38px serif";
+
+    obstacles.forEach(obstacle => {
+        ctx.fillText("🪨", obstacle.x, obstacle.y);
+    });
+}
+
+// =================================
+// DRAW START SCREEN
+// =================================
+
+function drawStartScreen() {
+
+    ctx.clearRect(0, 0, 850, 400);
+
+    background();
+    drawDino();
+    drawGirl();
+
+    ctx.fillStyle = "#ffffff";
+    ctx.textAlign = "center";
+    ctx.font = "bold 35px Trebuchet MS";
+
+    ctx.fillText("START GAME", 425, 190);
+
+    ctx.textAlign = "start";
+}
+
+// =================================
+// START GAME
+// =================================
+
+function startGame() {
+
+    if (playing) return;
+
+    if (gameOver) {
+        resetGame();
+    }
+
+    playing = true;
+    gameOver = false;
+
+    startButton.style.display = "none";
+
+    bgMusic.currentTime = 0;
+    bgMusic.play().catch(() => {});
+
+    loop();
+}
+
+// =================================
+// JUMP
+// =================================
+
+function jump() {
+
+    if (!playing || gameOver) return;
+
+    if (!girl.jumping) {
+
+        girl.velocity = -16;
+        girl.jumping = true;
+
+        jumpSound.currentTime = 0;
+        jumpSound.play().catch(() => {});
+    }
+}
+
+// =================================
+// TAP SCREEN TO JUMP
+// =================================
+
+canvas.addEventListener("pointerdown", function(event) {
+
+    event.preventDefault();
+
+    if (playing) {
+        jump();
+    }
+
+});
+
+// =================================
+// RESET GAME
+// =================================
+
+function resetGame() {
+
+    cancelAnimationFrame(animation);
+
+    score = 0;
+    frame = 0;
+    speed = 5;
+
+    obstacles = [];
+
+    girl.y = 275;
+    girl.velocity = 0;
+    girl.jumping = false;
+
+    dino.x = 60;
+
+    playing = false;
+    gameOver = false;
+
+    bgMusic.pause();
+    bgMusic.currentTime = 0;
+
+    caughtSound.pause();
+    caughtSound.currentTime = 0;
+
+    jumpSound.pause();
+    jumpSound.currentTime = 0;
+
+    scoreDisplay.textContent = "0";
+
+    startButton.style.display = "inline-block";
+    startButton.textContent = "START GAME";
+
+    drawStartScreen();
+}
+
+// =================================
+// GAME LOOP
+// =================================
+
+function loop() {
+
+    if (!playing) return;
+
+    ctx.clearRect(0, 0, 850, 400);
+
+    background();
+
+    frame++;
+
+    // Girl movement
+    girl.y += girl.velocity;
+    girl.velocity += 0.7;
+
+    if (girl.y >= 275) {
+
+        girl.y = 275;
+        girl.velocity = 0;
+        girl.jumping = false;
+    }
+
+    // Dinosaur follows girl
+    dino.x += 0.12;
+
+    if (dino.x > 340) {
+        dino.x = 340;
+    }
+
+    // Create rocks
+    if (frame % 100 === 0) {
+
+        obstacles.push({
+            x: 870,
+            y: 345
+        });
+    }
+
+    // Move rocks
+    obstacles.forEach(obstacle => {
+        obstacle.x -= speed;
+    });
+
+    obstacles = obstacles.filter(
+        obstacle => obstacle.x > -50
+    );
+
+    // Rock collision
+    for (const obstacle of obstacles) {
+
+        if (
+            obstacle.x < girl.x + 55 &&
+            obstacle.x + 35 > girl.x &&
+            girl.y > 245
+        ) {
+
+            endGame();
+            return;
+        }
+    }
+
+    // Draw characters
+    drawDino();
+    drawGirl();
+    drawObstacles();
+
+    // Score
+    score++;
+
+    scoreDisplay.textContent = Math.floor(score / 10);
+
+    // Increase difficulty
+    if (frame % 500 === 0) {
+        speed += 0.5;
+    }
+
+    // Dinosaur catches girl
+    if (dino.x + 100 >= girl.x) {
+
+        endGame();
+        return;
+    }
+
+    animation = requestAnimationFrame(loop);
+}
+
+// =================================
+// SPEECH BUBBLE
+// =================================
+
+function drawSpeechBubble() {
+
+    const bubbleX = girl.x - 5;
+    const bubbleY = girl.y - 65;
+
+    ctx.fillStyle = "#ffffff";
+    ctx.strokeStyle = "#333333";
+    ctx.lineWidth = 3;
+
+    ctx.beginPath();
+    ctx.roundRect(bubbleX - 15, bubbleY, 145, 48, 14);
+    ctx.fill();
+    ctx.stroke();
+
+    // Bubble pointer
+    ctx.beginPath();
+    ctx.moveTo(bubbleX + 15, bubbleY + 45);
+    ctx.lineTo(bubbleX + 5, bubbleY + 62);
+    ctx.lineTo(bubbleX + 40, bubbleY + 45);
+    ctx.closePath();
+    ctx.fill();
+    ctx.stroke();
+
+    ctx.fillStyle = "#e83e66";
+    ctx.font = "bold 20px Trebuchet MS";
+    ctx.textAlign = "center";
+
+    ctx.fillText(
+        "Ahh Daddy!",
+        bubbleX + 57,
+        bubbleY + 31
+    );
+
+    ctx.textAlign = "start";
+}
+
+// =================================
+// GAME OVER
+// =================================
+
+function endGame() {
+
+    if (gameOver) return;
+
+    playing = false;
+    gameOver = true;
+
+    cancelAnimationFrame(animation);
+
+    // Stop background music
+    bgMusic.pause();
+
+    // Play caught sound
+    caughtSound.currentTime = 0;
+    caughtSound.play().catch(() => {});
+
+    // Draw final scene
+    ctx.clearRect(0, 0, 850, 400);
+
+    background();
+    drawDino();
+    drawGirl();
+    drawObstacles();
+
+    // Dark transparent overlay
+    ctx.fillStyle = "rgba(0, 0, 0, 0.55)";
+    ctx.fillRect(0, 0, 850, 400);
+
+    // Draw girl and speech bubble above overlay
+    drawGirl();
+    drawSpeechBubble();
+
+    // Game over text
+    ctx.fillStyle = "#ffffff";
+    ctx.textAlign = "center";
+    ctx.font = "bold 48px Trebuchet MS";
+
+    ctx.fillText("GAME OVER", 425, 105);
+
+    ctx.textAlign = "start";
+
+    startButton.style.display = "inline-block";
+    startButton.textContent = "PLAY AGAIN";
+}
+
+// =================================
+// INITIAL SCREEN
+// =================================
+
+drawStartScreen();
+
+</script>
+
+</body>
+</html>
